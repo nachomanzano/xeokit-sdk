@@ -363,6 +363,11 @@ class Scene extends Component {
          */
         this.startTime = (new Date()).getTime();
 
+        // Mappings between Real-space and World-space coordinates systems
+        this._realUnits = "meters";
+        this._realOrigin = new Float32Array([0,0,0]);
+        this._realScale = 1.0;
+
         /**
          * Map of {@link Entity}s that represent models.
          *
@@ -514,7 +519,7 @@ class Scene extends Component {
             this.glRedraw();
         });
 
-        this.canvas.on("webglContextFailed",  ()=> {
+        this.canvas.on("webglContextFailed", () => {
             alert("xeokit failed to find WebGL!");
         });
 
@@ -687,6 +692,10 @@ class Scene extends Component {
             dontClear: true, // Never destroy this component with Scene#clear();
             element: this.canvas.canvas
         });
+
+        this.realUnits = cfg.realUnits;
+        this.realScale = cfg.realScale;
+        this.realOrigin = cfg.realOrigin;
 
         this.ticksPerRender = cfg.ticksPerRender;
         this.ticksPerOcclusionTest = cfg.ticksPerOcclusionTest;
@@ -1060,6 +1069,124 @@ class Scene extends Component {
         } else {
             this._lastAmbientColor = null;
         }
+    }
+
+    /**
+     * Sets the real-world measurement unit type.
+     *
+     * Accepted values are ````"meters"````, ````"centimeters"````, ````"millimeters"````, ````"yards"````, ````"feet"```` and ````"inches"````.
+     *
+     * Default value is ````"meters"````.
+     *
+     * {@link Scene#realScale} indicates how many of these units are represented by each World-space coordinate system unit.
+     *
+     * @type {String}
+     */
+    set realUnits(value) {
+        if (!value) {
+            value = "meters";
+        } else {
+            if (value !== "meters" && value !== "centimeters" && value !== "millimeters" && value !== "yards" && value !== "feet" && value !== "inches") {
+                this.error("Unsupported value for 'projection': " + value + " defaulting to 'meters'");
+                value = "meters";
+            }
+        }
+        this._realUnits = value;
+    }
+
+    /**
+     * Gets the real-world measurement unit type.
+     *
+     * @type {String}
+     */
+    get realUnits() {
+        return this._realUnits;
+    }
+
+    /**
+     * Sets the number of real-world units in each World-space coordinate system unit.
+     *
+     * For example, if {@link Scene#realUnits} is ````"meters"````, and there are ten meters per
+     * World-space coordinate system unit, then ````realScale```` would have a value of ````10.0````.
+     *
+     * * Default value is ````1.0````.
+     *
+     * @type {Number}
+     */
+    set realScale(value) {
+        if (value <= 0) {
+            this.error("realScale value should be larger than zero");
+            return;
+        }
+        this._realScale = value;
+    }
+
+    /**
+     * Gets the number of real-world units in each World-space coordinate system unit.
+     *
+     * @type {Number}
+     */
+    get realScale() {
+        return this._realScale;
+    }
+
+    /**
+     * Sets the real-world 3D origin, in real-world units, at which this Scene's World-space coordinate origin ````[0,0,0]```` sits.
+     *
+     * Default value is ````[0,0,0]````.
+     *
+     * @type {Number[]}
+     */
+    set realOrigin(value) {
+        if (!value) {
+            this._realOrigin[0] = 0;
+            this._realOrigin[1] = 0;
+            this._realOrigin[2] = 0;
+            return;
+        }
+        this._realOrigin[0] = value[0];
+        this._realOrigin[1] = value[1];
+        this._realOrigin[2] = value[2];
+    }
+
+    /**
+     * Gets the 3D real-world origin, in real-world units, at which this Scene's World-space coordinate origin ````[0,0,0]```` sits.
+     *
+     * @type {Number[]}
+     */
+    get realOrigin() {
+        return this._realOrigin;
+    }
+
+    /**
+     * Converts a 3D World-space position to 3D Real-space.
+     *
+     * This is equal to ````scene.realOrigin + (worldPos * scene realScale)````.
+     *
+     * @param {Number[]} [worldPos] 3D World-space coordinate.
+     * @param {Number[]} [realPos] 3D Real-space coordinate.
+     * @return {Number[]} 3D Real-space coordinate.
+     */
+    worldToRealPos(worldPos, realPos = new Float32Array(3)) {
+        realPos[0] = this._realOrigin[0] + (this._realScale * worldPos[0]);
+        realPos[1] = this._realOrigin[1] + (this._realScale * worldPos[1]);
+        realPos[2] = this._realOrigin[2] + (this._realScale * worldPos[2]);
+    }
+
+    /**
+     * Converts a 3D Real-space position to 3D World-space.
+     *
+     * This is equal to ````worldPos - scene.realOrigin) / scene realScale````.
+     *
+     * @param {Number[]} [realPos] 3D Real-space coordinate.
+     * @param {Number[]} [worldPos] 3D World-space coordinate.
+     * @return {Number[]} 3D World-space coordinate.
+     */
+    realToWorldPos(realPos, worldPos = new Float32Array(3)) {
+        worldPos[0] = (realPos[0] - this._realOrigin[0]) / this._realScale;
+        worldPos[1] = (realPos[1] - this._realOrigin[1]) / this._realScale;
+        worldPos[2] = (realPos[2] - this._realOrigin[2]) / this._realScale;
+        return worldPos;
     }
 
     /**
