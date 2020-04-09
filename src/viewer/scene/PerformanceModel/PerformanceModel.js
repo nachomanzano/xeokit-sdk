@@ -42,6 +42,8 @@ class PerformanceModel extends Component {
      * @param {*} [cfg] Configs
      * @param {String} [cfg.id] Optional ID, unique among all components in the parent scene, generated automatically when omitted.
      * @param {Boolean} [cfg.isModel] Specify ````true```` if this PerformanceModel represents a model, in which case the PerformanceModel will be registered by {@link PerformanceModel#id} in {@link Scene#models} and may also have a corresponding {@link MetaModel} with matching {@link MetaModel#id}, registered by that ID in {@link MetaScene#metaModels}.
+     * @param {String} [cfg.positionsCompression="auto"] Positions compression mode; see {@link PerformanceModel#positionsCompression}.
+     * @param {String} [cfg.normalsCompression="auto"] Normals compression mode; ; see {@link PerformanceModel#normalsCompression}.
      * @param {Number[]} [cfg.position=[0,0,0]] Local 3D position.
      * @param {Number[]} [cfg.scale=[1,1,1]] Local scale.
      * @param {Number[]} [cfg.rotation=[0,0,0]] Local rotation, as Euler angles given in degrees, for each of the X, Y and Z axis.
@@ -62,6 +64,19 @@ class PerformanceModel extends Component {
     constructor(owner, cfg = {}) {
 
         super(owner, cfg);
+
+        this._positionsCompression = cfg.positionsCompression || "auto";
+        this._normalsCompression = cfg.normalsCompression || "auto";
+
+        if (this._positionsCompression !== "precompressed" && this._positionsCompression !== "disabled" && this._positionsCompression !== "auto") {
+            this.error("Unsupported value for 'positionsCompression' - supported values are 'precompressed', 'disabled' and 'auto' - defaulting to 'auto'");
+            this._positionsCompression = 'auto;'
+        }
+
+        if (this._normalsCompression !== "precompressed" && this._normalsCompression !== "auto") {
+            this.error("Unsupported value for 'normalsCompression' - supported values are 'precompressed' and 'auto' - defaulting to 'auto'");
+            this._normalsCompression = 'auto;'
+        }
 
         this._aabb = math.collapseAABB3();
         this._layerList = []; // For GL state efficiency when drawing, InstancingLayers are in first part, BatchingLayers are in second
@@ -176,6 +191,74 @@ class PerformanceModel extends Component {
         this._onCameraViewMatrix = this.scene.camera.on("matrix", () => {
             this._viewMatrixDirty = true;
         });
+    }
+
+    /**
+     * Sets the positions compression mode.
+     *
+     * This configures how the {@link PerformanceModel#createGeometry} and {@link PerformanceModel#createMesh} methods
+     * treat their ````positions```` arguments.
+     *
+     * Accepted values are:
+     *
+     * * "auto" - causes the methods to expect ````positions```` to be uncompressed floats, and then compress them internally.
+     * * "precompressed" - causes the methods to expect ````positions```` to be pre-compressed (quantized) as 16-bit integers and accompanied by a ````positionsDecodeMatrix````.
+     * * "disabled" - causes the methods to expect the ````positions```` to be uncompressed floats, and never compress them.
+     *
+     * @type {String}
+     */
+    set positionsCompression(positionsCompression) {
+        if (this._positionsCompression === positionsCompression) {
+            return;
+        }
+        this._finishBatchingLayer();
+        this._positionsCompression = positionsCompression;
+    }
+
+    /**
+     * Gets the positions compression mode.
+     *
+     * @type {String}
+     */
+    get positionsCompression() {
+        return this._positionsCompression;
+    }
+
+    /**
+     * Sets the normals compression mode.
+     *
+     * This configures how the {@link PerformanceModel#createGeometry} and {@link PerformanceModel#createMesh} methods
+     * treat their ````normals```` arguments.
+     *
+     * Accepted values are:
+     *
+     * * "auto" - causes the methods to expect ````normals```` to be uncompressed floats, and then compress them internally.
+     * * "precompressed" - causes the methods to expect ````normals```` to be pre-compressed (oct-encoded) as 8-bit integers.
+     *
+     * @type {String}
+     */
+    set normalsCompression(normalsCompression) {
+        if (this._normalsCompression === normalsCompression) {
+            return;
+        }
+        this._finishBatchingLayer();
+        this._normalsCompression = normalsCompression;
+    }
+
+    /**
+     * Gets the normals compression mode.
+     *
+     * @type {String}
+     */
+    get normalsCompression() {
+        return this._normalsCompression;
+    }
+
+    _finishBatchingLayer() {
+        if (this._currentBatchingLayer) {
+            this._currentBatchingLayer.finalize();
+            this._currentBatchingLayer = null;
+        }
     }
 
     //------------------------------------------------------------------------------------------------------------------
@@ -320,20 +403,37 @@ class PerformanceModel extends Component {
      *
      * We can then supply the geometry ID to {@link PerformanceModel#createMesh} when we want to create meshes that instance the geometry.
      *
-     * If provide a  ````positionsDecodeMatrix```` , then ````createGeometry()```` will assume
-     * that the ````positions```` and ````normals```` arrays are compressed. When compressed, ````positions```` will be
-     * quantized and in World-space, and ````normals```` will be oct-encoded and in World-space.
+     * Note that this method requires ````positions````, ````normals```` and ````indices```` arrays together - all are mandatory.
+
+     * ## Positions compression
      *
-     * Note that ````positions````, ````normals```` and ````indices```` are all required together.
+     * The value of {@link PerformanceModel#positionsCompression} determines how this method treats ````positions```` with respect to compression:
+     *
+     * * ````"precompressed"```` causes this method to expect ````positions```` to be pre-compressed (quantized) 16-bit integers and accompanied by ````positionsDecodeMatrix````.
+     * *  ````"auto"```` causes this method to expect ````positions```` to be uncompressed floats, then automatically compress them, while ignoring ````positionsDecodeMatrix```` if provided.
+     * *  ````"disabled"```` - causes this method to expect ````positions```` to be uncompressed floats, and to not compress them, while ignoring ````positionsDecodeMatrix```` if provided.
+     *
+     * ## Normals compression
+     *
+     * The value of {@link PerformanceModel#normalsCompression} determines how this method treats ````normals```` with respect to compression:
+     *
+     * * ````"precompressed"```` causes this method to expect ````normals```` to be pre-compressed (oct-encoded) 8-bit integers.
+     * *  ````"auto"```` causes this method to expect ````normals```` to be uncompressed floats, then automatically compress (oct-encode) them.
      *
      * @param {*} cfg Geometry properties.
      * @param {String|Number} cfg.id Mandatory ID for the geometry, to refer to with {@link PerformanceModel#createMesh}.
-     * @param {String} [cfg.primitive="triangles"] The primitive type. Accepted values are 'points', 'lines', 'line-loop', 'line-strip', 'triangles', 'triangle-strip' and 'triangle-fan'.
-     * @param {Number[]} cfg.positions Flat array of positions.
-     * @param {Number[]} cfg.normals Flat array of normal vectors.
+     * @param {String} [cfg.primitive="triangles"] The primitive type. Accepted values are 'points', 'lines', 'line-loop',
+     * 'line-strip', 'triangles', 'triangle-strip' and 'triangle-fan'.
+     * @param {Number[]} cfg.positions Flat array of positions. When ````PerformanceModel```` is constructed with
+     * ````positionsCompression```` set to ````"precompressed"````, these should be pre-compressed (quantized) as 16-bit integers
+     * and accompanied by ````positionsDecodeMatrix````.
+     * @param {Number[]} cfg.normals Flat array of normal vectors. When ````PerformanceModel```` is constructed with
+     * ````normalsCompression```` set to ````"precompressed"````, these should be pre-compressed (oct-encodes) as
+     * 8-bit integers.
      * @param {Number[]} cfg.indices Array of triangle indices.
      * @param {Number[]} cfg.edgeIndices Array of edge line indices.
-     * @param {Number[]} [cfg.positionsDecodeMatrix] A 4x4 matrix for decompressing ````positions````.
+     * @param {Number[]} [cfg.positionsDecodeMatrix] A 4x4 matrix for decompressing ````positions````. This is expected
+     * when {@link PerformanceModel#positionsCompression} is ````"precompressed"````.
      */
     createGeometry(cfg) {
         if (!instancedArraysSupported) {
@@ -349,6 +449,10 @@ class PerformanceModel extends Component {
             this.error("Geometry already created: " + geometryId);
             return;
         }
+
+        cfg.positionsCompression = this._positionsCompression;
+        cfg.normalsCompression = this._normalsCompression;
+
         const instancingLayer = new InstancingLayer(this, cfg);
         this._instancingLayers[geometryId] = instancingLayer;
         this._layerList.push(instancingLayer);
@@ -364,34 +468,46 @@ class PerformanceModel extends Component {
      * To share a geometry with other meshes, provide the ID of a geometry created earlier
      * with {@link PerformanceModel#createGeometry}.
      *
-     * To create unique geometry for the mesh, provide geometry data arrays.
+     * To create unique geometry for the mesh, provide geometry data arrays. Note that ````positions````,
+     * ````normals```` and ````indices```` arrays are all required together.
      *
-     * Internally, PerformanceModel will batch all unique mesh geometries into the same arrays, which improves
-     * rendering performance.
+     * ## Positions compression
      *
-     * If you accompany the arrays with a  ````positionsDecodeMatrix```` , then ````createMesh()```` will assume
-     * that the ````positions```` and ````normals```` arrays are compressed. When compressed, ````positions```` will be
-     * quantized and in World-space, and ````normals```` will be oct-encoded and in World-space.
+     * The value of {@link PerformanceModel#positionsCompression} determines how this method treats ````positions```` with respect to compression:
      *
-     * When creating compressed batches, ````createMesh()```` will start a new batch each time ````positionsDecodeMatrix````
-     * changes. Therefore, to combine arrays into the minimum number of batches, it's best for performance to create
-     * your shared meshes in runs that have the value for ````positionsDecodeMatrix````.
+     * * ````"precompressed"```` causes this method to expect ````positions```` to be pre-compressed (quantized) 16-bit integers and accompanied by ````positionsDecodeMatrix````.
+     * *  ````"auto"```` causes this method to expect ````positions```` to be uncompressed floats, then automatically compress them, while ignoring ````positionsDecodeMatrix```` if provided.
+     * *  ````"disabled"```` - causes this method to expect ````positions```` to be uncompressed floats, and to not compress them, while ignoring ````positionsDecodeMatrix```` if provided.
      *
-     * Note that ````positions````, ````normals```` and ````indices```` are all required together.
+     * ## Normals compression
+     *
+     * The value of {@link PerformanceModel#normalsCompression} determines how this method treats ````normals```` with respect to compression:
+     *
+     * * ````"precompressed"```` causes this method to expect ````normals```` to be pre-compressed (oct-encoded) 8-bit integers.
+     * *  ````"auto"```` causes this method to expect ````normals```` to be uncompressed floats, then automatically compress (oct-encode) them.
      *
      * @param {object} cfg Object properties.
      * @param {String} cfg.id Mandatory ID for the new mesh. Must not clash with any existing components within the {@link Scene}.
-     * @param {String|Number} [cfg.geometryId] ID of a geometry to instance, previously created with {@link PerformanceModel#createGeometry:method"}}createMesh(){{/crossLink}}. Overrides all other geometry parameters given to this method.
-     * @param {String} [cfg.primitive="triangles"]  Geometry primitive type. Ignored when ````geometryId```` is given. Accepted values are 'points', 'lines', 'line-loop', 'line-strip', 'triangles', 'triangle-strip' and 'triangle-fan'.
+     * @param {String|Number} [cfg.geometryId] ID of a geometry to instance, previously created with
+     * {@link PerformanceModel#createGeometry:method"}}createMesh(){{/crossLink}}. Overrides all other geometry
+     * arrays given to this method.
+     * @param {String} [cfg.primitive="triangles"]  Geometry primitive type. Ignored when ````geometryId```` is given.
+     * Accepted values are 'points', 'lines', 'line-loop', 'line-strip', 'triangles', 'triangle-strip' and 'triangle-fan'.
      * @param {Number[]} [cfg.positions] Flat array of geometry positions. Ignored when ````geometryId```` is given.
-     * @param {Number[]} [cfg.normals] Flat array of normal vectors. Ignored when ````geometryId```` is given.
-     * @param {Number[]} [cfg.positionsDecodeMatrix] A 4x4 matrix for decompressing ````positions````.
+     * When ````PerformanceModel```` is constructed with ````positionsCompression```` set to ````"precompressed"````,
+     * these should be pre-compressed (quantized) as 16-bit integers and accompanied by ````positionsDecodeMatrix````.
+     * @param {Number[]} [cfg.normals] Flat array of normal vectors. Ignored when ````geometryId```` is given. When
+     * ````PerformanceModel```` is constructed with ````normalsCompression```` set to ````"precompressed"````, these
+     * should be pre-compressed (oct-encodes) as 8-bit integers.
+     * @param {Number[]} [cfg.positionsDecodeMatrix] A 4x4 matrix for decompressing ````positions````. This is expected when {@link PerformanceModel#positionsCompression} is ````"precompressed"````.
      * @param {Number[]} [cfg.indices] Array of triangle indices. Ignored when ````geometryId```` is given.
      * @param {Number[]} [cfg.edgeIndices] Array of edge line indices. Ignored when ````geometryId```` is given.
      * @param {Number[]} [cfg.position=[0,0,0]] Local 3D position. of the mesh
      * @param {Number[]} [cfg.scale=[1,1,1]] Scale of the mesh.
-     * @param {Number[]} [cfg.rotation=[0,0,0]] Rotation of the mesh as Euler angles given in degrees, for each of the X, Y and Z axis.
-     * @param {Number[]} [cfg.matrix=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]] Mesh modelling transform matrix. Overrides the ````position````, ````scale```` and ````rotation```` parameters.
+     * @param {Number[]} [cfg.rotation=[0,0,0]] Rotation of the mesh as Euler angles given in degrees, for each of the
+     * X, Y and Z axis.
+     * @param {Number[]} [cfg.matrix=[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]] Mesh modelling transform matrix. Overrides the
+     * ````position````, ````scale```` and ````rotation```` parameters.
      * @param {Number[]} [cfg.color=[1,1,1]] RGB color in range ````[0..1, 0..`, 0..1]````.
      * @param {Number} [cfg.opacity=1] Opacity in range ````[0..1]````.
      */
@@ -500,16 +616,22 @@ class PerformanceModel extends Component {
                 return null;
             }
 
-            if (cfg.positionsDecodeMatrix) {
-                if (!this._lastDecodeMatrix) {
-                    this._lastDecodeMatrix = math.mat4(cfg.positionsDecodeMatrix);
-                } else {
-                    if (!math.compareMat4(this._lastDecodeMatrix, cfg.positionsDecodeMatrix)) {
-                        if (this._currentBatchingLayer) {
-                            this._currentBatchingLayer.finalize();
-                            this._currentBatchingLayer = null;
+            if (this._positionsCompression !== "disabled") {
+
+                if (cfg.positionsDecodeMatrix) {
+
+                    if (!this._lastDecodeMatrix) {
+                        this._lastDecodeMatrix = math.mat4(cfg.positionsDecodeMatrix);
+
+                    } else {
+
+                        if (!math.compareMat4(this._lastDecodeMatrix, cfg.positionsDecodeMatrix)) {
+                            if (this._currentBatchingLayer) {
+                                this._currentBatchingLayer.finalize();
+                                this._currentBatchingLayer = null;
+                            }
+                            this._lastDecodeMatrix.set(cfg.positionsDecodeMatrix)
                         }
-                        this._lastDecodeMatrix.set(cfg.positionsDecodeMatrix)
                     }
                 }
             }
@@ -522,12 +644,13 @@ class PerformanceModel extends Component {
             }
 
             if (!this._currentBatchingLayer) {
-                // console.log("New batching layer");
                 this._currentBatchingLayer = new BatchingLayer(this, {
                     primitive: "triangles",
                     buffer: this._batchingBuffer,
                     scratchMemory: this._batchingScratchMemory,
                     positionsDecodeMatrix: cfg.positionsDecodeMatrix,
+                    positionsCompression: this._positionsCompression,
+                    normalsCompression: this._normalsCompression,
                 });
                 this._layerList.push(this._currentBatchingLayer);
             }
@@ -541,7 +664,7 @@ class PerformanceModel extends Component {
             let meshMatrix;
             let worldMatrix = this._worldMatrixNonIdentity ? this._worldMatrix : null;
 
-            if (!cfg.positionsDecodeMatrix) {
+            if (this._positionsCompression !== "precompressed") {
 
                 if (cfg.matrix) {
                     meshMatrix = cfg.matrix;
@@ -690,7 +813,7 @@ class PerformanceModel extends Component {
             putBatchingBuffer(this._batchingBuffer);
             this._batchingBuffer = null;
         }
-        for (const geometryId in this._instancingLayers) {
+        for (let geometryId in this._instancingLayers) {
             if (this._instancingLayers.hasOwnProperty(geometryId)) {
                 this._instancingLayers[geometryId].finalize();
             }

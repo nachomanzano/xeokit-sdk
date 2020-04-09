@@ -28,6 +28,9 @@ class InstancingLayer {
     /**
      * @param model
      * @param cfg
+     * @param cfg.positionsDecodeMatrix
+     * @param cfg.positionsCompression - "precompressed" \ "disabled" | "auto".
+     * @param cfg.normalsCompression - "precompressed" | "auto".
      * @param cfg.primitive
      * @param cfg.positions Flat float Local-space positions array.
      * @param cfg.normals Flat float normals array.
@@ -76,11 +79,32 @@ class InstancingLayer {
             obb: math.OBB3()
         };
 
-        const preCompressed = (!!cfg.positionsDecodeMatrix);
+        let positionsCompression = cfg.positionsCompression;
+        let normalsCompression = cfg.normalsCompression;
+
+        if (positionsCompression !== "precompressed" && positionsCompression !== "disabled" && positionsCompression !== "auto") {
+            model.error("Unsupported value for 'positionsCompression' - supported values are 'precompressed', 'disabled' and 'auto' - defaulting to 'auto'");
+            positionsCompression = "auto";
+        }
+
+        if (normalsCompression !== "precompressed" && normalsCompression !== "auto") {
+            model.error("Unsupported value for 'normalsCompression' - supported values are 'precompressed' and 'auto' - defaulting to 'auto'");
+            normalsCompression = "auto";
+        }
 
         if (cfg.positions) {
 
-            if (preCompressed) {
+            if (positionsCompression === "disabled") {
+
+                let lenPositions = cfg.positions.length;
+                let localAABB = math.collapseAABB3();
+                math.expandAABB3Points3(localAABB, cfg.positions);
+                math.AABB3ToOBB3(localAABB, stateCfg.obb);
+                let normalized = false;
+                stateCfg.positionsBuf = new ArrayBuf(gl, gl.ARRAY_BUFFER, cfg.positions, lenPositions, 3, gl.STATIC_DRAW, normalized);
+                math.identityMat4(stateCfg.positionsDecodeMatrix); // Null decode matrix, does nothing in shaders
+
+            } else if (positionsCompression === "precompressed") {
 
                 let normalized = false;
                 stateCfg.positionsBuf = new ArrayBuf(gl, gl.ARRAY_BUFFER, cfg.positions, cfg.positions.length, 3, gl.STATIC_DRAW, normalized);
@@ -91,7 +115,7 @@ class InstancingLayer {
                 geometryCompressionUtils.decompressAABB(localAABB, stateCfg.positionsDecodeMatrix);
                 math.AABB3ToOBB3(localAABB, stateCfg.obb);
 
-            } else {
+            } else { // "auto"
 
                 let lenPositions = cfg.positions.length;
                 let localAABB = math.collapseAABB3();
@@ -104,7 +128,7 @@ class InstancingLayer {
         }
         if (cfg.normals) {
 
-            if (preCompressed) {
+            if (normalsCompression === "precompressed") {
 
                 let normalized = true; // For oct-encoded UInt8
                 stateCfg.normalsBuf = new ArrayBuf(gl, gl.ARRAY_BUFFER, cfg.normals, cfg.normals.length, 3, gl.STATIC_DRAW, normalized);

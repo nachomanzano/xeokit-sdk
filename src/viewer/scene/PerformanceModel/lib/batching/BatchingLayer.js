@@ -1,5 +1,4 @@
 import {math} from "../../../math/math.js";
-import {WEBGL_INFO} from "../../../webglInfo.js";
 import {RenderState} from "../../../webgl/RenderState.js";
 import {ArrayBuf} from "../../../webgl/ArrayBuf.js";
 
@@ -23,6 +22,9 @@ class BatchingLayer {
     /**
      * @param model
      * @param cfg
+     * @param cfg.positionsDecodeMatrix
+     * @param cfg.positionsCompression - "precompressed" \ "disabled" | "auto".
+     * @param cfg.normalsCompression - "precompressed" | "auto".
      * @param cfg.buffer
      * @param cfg.scratchMemory
      * @param cfg.primitive
@@ -73,7 +75,7 @@ class BatchingLayer {
             flags2Buf: null,
             indicesBuf: null,
             edgeIndicesBuf: null,
-            positionsDecodeMatrix: math.mat4()
+            positionsDecodeMatrix: math.identityMat4()
         });
 
         // These counts are used to avoid unnecessary render passes
@@ -92,8 +94,20 @@ class BatchingLayer {
         this._portions = [];
 
         this._finalized = false;
-        this._positionsDecodeMatrix = cfg.positionsDecodeMatrix;
-        this._preCompressed = (!!this._positionsDecodeMatrix);
+        this._positionsDecodeMatrix = (cfg.positionsDecodeMatrix || math.identityMat4());
+
+        this._positionsCompression = cfg.positionsCompression;
+        this._normalsCompression = cfg.normalsCompression;
+
+        if (this._positionsCompression !== "precompressed" && this._positionsCompression !== "disabled" && this._positionsCompression !== "auto") {
+            model.error("Unsupported value for 'positionsCompression' - supported values are 'precompressed', 'disabled' and 'auto' - defaulting to 'auto'");
+            this._positionsCompression = "auto";
+        }
+
+        if (this._normalsCompression !== "precompressed" && this._normalsCompression !== "auto") {
+            model.error("Unsupported value for 'normalsCompression' - supported values are 'precompressed' and 'auto' - defaulting to 'auto'");
+            this._normalsCompression = "auto";
+        }
     }
 
     /**
@@ -140,7 +154,7 @@ class BatchingLayer {
         const numVerts = positions.length / 3;
         const lenPositions = positions.length;
 
-        if (this._preCompressed) {
+        if (this._positionsCompression === "precompressed") {
 
             buffer.positions.set(positions, buffer.lenPositions);
             buffer.lenPositions += lenPositions;
@@ -163,7 +177,7 @@ class BatchingLayer {
                 math.OBB3ToAABB3(tempOBB3, worldAABB);
             }
 
-        } else {
+        } else { // "disabled" or "auto"
 
             buffer.positions.set(positions, buffer.lenPositions);
 
@@ -215,7 +229,7 @@ class BatchingLayer {
 
         if (normals) {
 
-            if (this._preCompressed) {
+            if (this._normalsCompression === "precompressed") {
 
                 buffer.normals.set(normals, buffer.lenNormals);
                 buffer.lenNormals += normals.length;
@@ -349,10 +363,19 @@ class BatchingLayer {
         const gl = this.model.scene.canvas.gl;
         const buffer = this._buffer;
 
-        if (this._preCompressed) {
+        if (this._positionsCompression === "disabled") {
+
+            if (buffer.lenPositions > 0) {
+                state.positionsBuf = new ArrayBuf(gl, gl.ARRAY_BUFFER, buffer.positions.slice(0, buffer.lenPositions), buffer.lenPositions, 3, gl.STATIC_DRAW);
+            }
+
+        } else if (this._positionsCompression === "precompressed") {
+
             state.positionsDecodeMatrix = this._positionsDecodeMatrix;
             state.positionsBuf = new ArrayBuf(gl, gl.ARRAY_BUFFER, buffer.positions.slice(0, buffer.lenPositions), buffer.lenPositions, 3, gl.STATIC_DRAW);
-        } else {
+
+        } else { // this._positionsCompression === "auto"
+
             quantizePositions(buffer.positions, buffer.lenPositions, this._modelAABB, buffer.quantizedPositions, state.positionsDecodeMatrix); // BOTTLENECK
 
             if (buffer.lenPositions > 0) {
