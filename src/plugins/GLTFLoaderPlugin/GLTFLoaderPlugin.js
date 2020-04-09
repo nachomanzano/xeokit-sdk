@@ -293,7 +293,9 @@ class GLTFLoaderPlugin extends Plugin {
             // converting glTF materials to simple flat-shading without textures
 
             ? new PerformanceModel(this.viewer.scene, utils.apply(params, {
-                isModel: true
+                isModel: true,
+                positionsCompression: "auto",
+                normalsCompression: "auto"
             }))
 
             // Scene Node graph supports original glTF materials
