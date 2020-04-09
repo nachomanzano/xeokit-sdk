@@ -8,6 +8,7 @@ import {ParserV1} from "./parsers/ParserV1.js";
 import {ParserV2} from "./parsers/ParserV2.js";
 import {ParserV3} from "./parsers/ParserV3.js";
 import {ParserV4} from "./parsers/ParserV4.js";
+import {ParserV5} from "./parsers/ParserV5.js";
 
 const parsers = {};
 
@@ -15,6 +16,7 @@ parsers[ParserV1.version] = ParserV1;
 parsers[ParserV2.version] = ParserV2;
 parsers[ParserV3.version] = ParserV3;
 parsers[ParserV4.version] = ParserV4;
+parsers[ParserV5.version] = ParserV5;
 
 /**
  * {@link Viewer} plugin that loads models from xeokit's optimized *````.xkt````* format.
