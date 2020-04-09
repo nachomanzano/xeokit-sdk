@@ -18,29 +18,33 @@ function extract(elements) {
         normals: elements[1],
         indices: elements[2],
         edgeIndices: elements[3],
-        matrices: elements[4],
-        eachPrimitivePositionsAndNormalsPortion: elements[5],
-        eachPrimitiveIndicesPortion: elements[6],
-        eachPrimitiveEdgeIndicesPortion: elements[7],
-        eachPrimitiveColor: elements[8],
-        primitiveInstances: elements[9],
-        eachEntityId: elements[10],
-        eachEntityPrimitiveInstancesPortion: elements[11],
-        eachEntityMatricesPortion: elements[12],
-        eachEntityMatrix: elements[13]
+        decodeMatrices: elements[4],
+        matrices: elements[5],
+        eachPrimitivePositionsAndNormalsPortion: elements[6],
+        eachPrimitiveIndicesPortion: elements[7],
+        eachPrimitiveEdgeIndicesPortion: elements[8],
+        eachPrimitiveDecodeMatricesPortion: elements[9],
+        eachPrimitiveColor: elements[10],
+        primitiveInstances: elements[11],
+        eachEntityId: elements[12],
+        eachEntityPrimitiveInstancesPortion: elements[13],
+        eachEntityMatricesPortion: elements[14],
+        eachEntityMatrix: elements[15]
     };
 }
 
 function inflate(deflatedData) {
     return {
-        positions: new Float32Array(pako.inflate(deflatedData.positions).buffer),
+        positions: new Uint16Array(pako.inflate(deflatedData.positions).buffer),
         normals: new Int8Array(pako.inflate(deflatedData.normals).buffer),
         indices: new Uint32Array(pako.inflate(deflatedData.indices).buffer),
         edgeIndices: new Uint32Array(pako.inflate(deflatedData.edgeIndices).buffer),
+        decodeMatrices: new Float32Array(pako.inflate(deflatedData.decodeMatrices).buffer),
         matrices: new Float32Array(pako.inflate(deflatedData.matrices).buffer),
         eachPrimitivePositionsAndNormalsPortion: new Uint32Array(pako.inflate(deflatedData.eachPrimitivePositionsAndNormalsPortion).buffer),
         eachPrimitiveIndicesPortion: new Uint32Array(pako.inflate(deflatedData.eachPrimitiveIndicesPortion).buffer),
         eachPrimitiveEdgeIndicesPortion: new Uint32Array(pako.inflate(deflatedData.eachPrimitiveEdgeIndicesPortion).buffer),
+        eachPrimitiveDecodeMatricesPortion: new Uint32Array(pako.inflate(deflatedData.eachPrimitiveDecodeMatricesPortion).buffer),
         eachPrimitiveColor: new Uint8Array(pako.inflate(deflatedData.eachPrimitiveColor).buffer),
         primitiveInstances: new Uint32Array(pako.inflate(deflatedData.primitiveInstances).buffer),
         eachEntityId: pako.inflate(deflatedData.eachEntityId, {to: 'string'}),
@@ -61,18 +65,17 @@ const decompressColor = (function () {
 
 function load(viewer, options, inflatedData, performanceModel) {
 
-    performanceModel.positionsCompression = "disabled"; // Positions in XKT V4 are floats, which we never quantize, for precision with big models
-    performanceModel.normalsCompression = "precompressed"; // Normals are oct-encoded though
-
     const positions = inflatedData.positions;
     const normals = inflatedData.normals;
     const indices = inflatedData.indices;
     const edgeIndices = inflatedData.edgeIndices;
+    const decodeMatrices = inflatedData.decodeMatrices;
     const matrices = inflatedData.matrices;
 
     const eachPrimitivePositionsAndNormalsPortion = inflatedData.eachPrimitivePositionsAndNormalsPortion;
     const eachPrimitiveIndicesPortion = inflatedData.eachPrimitiveIndicesPortion;
     const eachPrimitiveEdgeIndicesPortion = inflatedData.eachPrimitiveEdgeIndicesPortion;
+    const eachPrimitiveDecodeMatricesPortion = inflatedData.eachPrimitiveDecodeMatricesPortion;
     const eachPrimitiveColor = inflatedData.eachPrimitiveColor;
 
     const primitiveInstances = inflatedData.primitiveInstances;
@@ -84,8 +87,26 @@ function load(viewer, options, inflatedData, performanceModel) {
     const numPrimitives = eachPrimitivePositionsAndNormalsPortion.length;
     const numPrimitiveInstances = primitiveInstances.length;
     const primitiveInstanceCounts = new Uint8Array(numPrimitives); // For each mesh, how many times it is instanced
+    const orderedPrimitiveIndexes = new Uint32Array(numPrimitives); // For each mesh, its index sorted into runs that share the same decode matrix
 
     const numEntities = eachEntityId.length;
+
+    // Get lookup that orders primitives into runs that share the same decode matrices;
+    // this is used to create meshes in batches that use the same decode matrix
+
+    for (let primitiveIndex = 0; primitiveIndex < numPrimitives; primitiveIndex++) {
+        orderedPrimitiveIndexes[primitiveIndex] = primitiveIndex;
+    }
+
+    orderedPrimitiveIndexes.sort((i1, i2) => {
+        if (eachPrimitiveDecodeMatricesPortion[i1] < eachPrimitiveDecodeMatricesPortion[i2]) {
+            return -1;
+        }
+        if (eachPrimitiveDecodeMatricesPortion[i1] > eachPrimitiveDecodeMatricesPortion[i2]) {
+            return 1;
+        }
+        return 0;
+    });
 
     // Count instances of each primitive
 
@@ -119,28 +140,36 @@ function load(viewer, options, inflatedData, performanceModel) {
 
     var countGeometries = 0;
 
-    // Create geometries for instanced primitives and meshes for batched primitives.
+    // Create 1) geometries for instanced primitives, and 2) meshes for batched primitives.  We create all the
+    // batched meshes now, before we create entities, because we're creating the batched meshes in runs that share
+    // the same decode matrices. Each run of meshes with the same decode matrix will end up in the same
+    // BatchingLayer; the PerformanceModel#createMesh() method starts a new BatchingLayer each time the decode
+    // matrix has changed since the last invocation of that method, hence why we need to order batched meshes
+    // in runs like this.
 
     for (let primitiveIndex = 0; primitiveIndex < numPrimitives; primitiveIndex++) {
 
-        const atLastPrimitive = (primitiveIndex === (numPrimitives - 1));
+        const orderedPrimitiveIndex = orderedPrimitiveIndexes[primitiveIndex];
 
-        const primitiveInstanceCount = primitiveInstanceCounts[primitiveIndex];
+        const atLastPrimitive = (orderedPrimitiveIndex === (numPrimitives - 1));
+
+        const primitiveInstanceCount = primitiveInstanceCounts[orderedPrimitiveIndex];
         const isInstancedPrimitive = (primitiveInstanceCount > 1);
 
-        const color = decompressColor(eachPrimitiveColor.subarray((primitiveIndex * 4), (primitiveIndex * 4) + 3));
-        const opacity = eachPrimitiveColor[(primitiveIndex * 4) + 3] / 255.0;
+        const color = decompressColor(eachPrimitiveColor.subarray((orderedPrimitiveIndex * 4), (orderedPrimitiveIndex * 4) + 3));
+        const opacity = eachPrimitiveColor[(orderedPrimitiveIndex * 4) + 3] / 255.0;
 
-        const primitivePositions = positions.subarray(eachPrimitivePositionsAndNormalsPortion [primitiveIndex], atLastPrimitive ? positions.length : eachPrimitivePositionsAndNormalsPortion [primitiveIndex + 1]);
-        const primitiveNormals = normals.subarray(eachPrimitivePositionsAndNormalsPortion [primitiveIndex], atLastPrimitive ? normals.length : eachPrimitivePositionsAndNormalsPortion [primitiveIndex + 1]);
-        const primitiveIndices = indices.subarray(eachPrimitiveIndicesPortion [primitiveIndex], atLastPrimitive ? indices.length : eachPrimitiveIndicesPortion [primitiveIndex + 1]);
-        const primitiveEdgeIndices = edgeIndices.subarray(eachPrimitiveEdgeIndicesPortion [primitiveIndex], atLastPrimitive ? edgeIndices.length : eachPrimitiveEdgeIndicesPortion [primitiveIndex + 1]);
+        const primitivePositions = positions.subarray(eachPrimitivePositionsAndNormalsPortion [orderedPrimitiveIndex], atLastPrimitive ? positions.length : eachPrimitivePositionsAndNormalsPortion [orderedPrimitiveIndex + 1]);
+        const primitiveNormals = normals.subarray(eachPrimitivePositionsAndNormalsPortion [orderedPrimitiveIndex], atLastPrimitive ? normals.length : eachPrimitivePositionsAndNormalsPortion [orderedPrimitiveIndex + 1]);
+        const primitiveIndices = indices.subarray(eachPrimitiveIndicesPortion [orderedPrimitiveIndex], atLastPrimitive ? indices.length : eachPrimitiveIndicesPortion [orderedPrimitiveIndex + 1]);
+        const primitiveEdgeIndices = edgeIndices.subarray(eachPrimitiveEdgeIndicesPortion [orderedPrimitiveIndex], atLastPrimitive ? edgeIndices.length : eachPrimitiveEdgeIndicesPortion [orderedPrimitiveIndex + 1]);
+        const primitiveDecodeMatrix = decodeMatrices.subarray(eachPrimitiveDecodeMatricesPortion [orderedPrimitiveIndex], eachPrimitiveDecodeMatricesPortion [orderedPrimitiveIndex] + 16);
 
         if (isInstancedPrimitive) {
 
             // Primitive instanced by more than one entity, and has positions in Model-space
 
-            var geometryId = "geometry" + primitiveIndex; // These IDs are local to the PerformanceModel
+            var geometryId = "geometry" + orderedPrimitiveIndex; // These IDs are local to the PerformanceModel
 
             performanceModel.createGeometry({
                 id: geometryId,
@@ -148,7 +177,8 @@ function load(viewer, options, inflatedData, performanceModel) {
                 positions: primitivePositions,
                 normals: primitiveNormals,
                 indices: primitiveIndices,
-                edgeIndices: primitiveEdgeIndices
+                edgeIndices: primitiveEdgeIndices,
+                positionsDecodeMatrix: primitiveDecodeMatrix
             });
 
             countGeometries++;
@@ -157,9 +187,9 @@ function load(viewer, options, inflatedData, performanceModel) {
 
             // Primitive is used only by one entity, and has positions pre-transformed into World-space
 
-            const meshId = primitiveIndex; // These IDs are local to the PerformanceModel
+            const meshId = orderedPrimitiveIndex; // These IDs are local to the PerformanceModel
 
-            const entityIndex = batchedPrimitiveEntityIndexes[primitiveIndex];
+            const entityIndex = batchedPrimitiveEntityIndexes[orderedPrimitiveIndex];
             const entityId = eachEntityId[entityIndex];
 
             const meshDefaults = {}; // TODO: get from lookup from entity IDs
@@ -171,6 +201,7 @@ function load(viewer, options, inflatedData, performanceModel) {
                 normals: primitiveNormals,
                 indices: primitiveIndices,
                 edgeIndices: primitiveEdgeIndices,
+                positionsDecodeMatrix: primitiveDecodeMatrix,
                 color: color,
                 opacity: opacity
             }));
