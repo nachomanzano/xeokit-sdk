@@ -14,18 +14,23 @@ if (!pako.inflate) {  // See https://github.com/nodeca/pako/issues/97
 
 function extract(elements) {
     return {
+
         positions: elements[0],
         normals: elements[1],
         indices: elements[2],
         edgeIndices: elements[3],
+
         meshPositions: elements[4],
         meshIndices: elements[5],
         meshEdgesIndices: elements[6],
         meshColors: elements[7],
+
         entityIDs: elements[8],
         entityMeshes: elements[9],
         entityIsObjects: elements[10],
+
         positionsDecodeMatrix: elements[11],
+
         entityMeshIds: elements[12],
         entityMatrices: elements[13],
         entityUsesInstancing: elements[14]
@@ -38,14 +43,18 @@ function inflate(deflatedData) {
         normals: new Int8Array(pako.inflate(deflatedData.normals).buffer),
         indices: new Uint32Array(pako.inflate(deflatedData.indices).buffer),
         edgeIndices: new Uint32Array(pako.inflate(deflatedData.edgeIndices).buffer),
+
         meshPositions: new Uint32Array(pako.inflate(deflatedData.meshPositions).buffer),
         meshIndices: new Uint32Array(pako.inflate(deflatedData.meshIndices).buffer),
         meshEdgesIndices: new Uint32Array(pako.inflate(deflatedData.meshEdgesIndices).buffer),
         meshColors: new Uint8Array(pako.inflate(deflatedData.meshColors).buffer),
+
         entityIDs: pako.inflate(deflatedData.entityIDs, {to: 'string'}),
         entityMeshes: new Uint32Array(pako.inflate(deflatedData.entityMeshes).buffer),
         entityIsObjects: new Uint8Array(pako.inflate(deflatedData.entityIsObjects).buffer),
+
         positionsDecodeMatrix: new Float32Array(pako.inflate(deflatedData.positionsDecodeMatrix).buffer),
+
         entityMeshIds: new Uint32Array(pako.inflate(deflatedData.entityMeshIds).buffer),
         entityMatrices: new Float32Array(pako.inflate(deflatedData.entityMatrices).buffer),
         entityUsesInstancing: new Uint8Array(pako.inflate(deflatedData.entityUsesInstancing).buffer)
@@ -128,6 +137,7 @@ function load(viewer, options, inflatedData, performanceModel) {
         const meshIds = [];
 
         for (let j = entityMeshes [i], jlen = lastEntity ? entityMeshIds.length : entityMeshes [i + 1]; j < jlen; j++) {
+
             const jj = entityMeshIds [j];
 
             const lastMesh = (jj === (numMeshes - 1));
@@ -142,6 +152,7 @@ function load(viewer, options, inflatedData, performanceModel) {
             const tmpEdgeIndices = edgeIndices.subarray(meshEdgesIndices [jj], lastMesh ? edgeIndices.length : meshEdgesIndices [jj + 1]);
 
             if (entityUsesInstancing [i] === 1) {
+
                 const geometryId = "geometry." + jj;
 
                 if (!(geometryId in alreadyCreatedGeometries)) {
@@ -170,6 +181,7 @@ function load(viewer, options, inflatedData, performanceModel) {
                 meshIds.push(meshId);
                 
             } else {
+
                 performanceModel.createMesh(utils.apply(meshDefaults, {
                     id: meshId,
                     primitive: "triangles",

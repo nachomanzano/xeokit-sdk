@@ -1,48 +1,6 @@
 /*
 
 Parser for .XKT Format V1
--------------------------
-
-XKT format V1 consists of entities, which have meshes, which have geometry.
-
-The format contains the following elements.
-
-Four geometry arrays that contain the concatenation of all geometries:
-
-- positions     (quantized to 16-bit unsigned ints)
-- normals       (oct-encoded)
-- indices       (triangles)
-- edgeIndices   (wireframe edges)
-
-Three arrays of pointers into the geometry arrays, to indicate which portion of the geometry arrays belongs to
-each mesh:
-
-- meshPositions
-- meshIndices
-- meshEdgesIndices
-
-An array containing the RGBA color (as four integers in range 0..255) of each mesh:
-
-- meshColors
-
-An array containing the string ID of each entity:
-
-- entityIDs
-
-An array containing a pointer into the mesh pointer arrays for each entity, to indicate the first mesh in those arrays
-that belongs to the entity:
-
-- entityMeshes
-
-An array containing a flag for each entity, to indicate if the entity represents an object in
-xeokit (eg. an IFC element):
-
-- entityIsObjects
-
-A 4x4 decoding matrix, for xeokit to de-quantize the integer positions back to floating-point values:
-
-- positionsDecodeMatrix
-
 
  */
 
