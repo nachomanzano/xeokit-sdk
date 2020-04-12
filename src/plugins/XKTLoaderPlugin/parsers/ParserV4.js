@@ -65,6 +65,9 @@ const decompressColor = (function () {
 
 function load(viewer, options, inflatedData, performanceModel) {
 
+    performanceModel.positionsCompression = "precompressed";
+    performanceModel.normalsCompression = "precompressed";
+
     const positions = inflatedData.positions;
     const normals = inflatedData.normals;
     const indices = inflatedData.indices;

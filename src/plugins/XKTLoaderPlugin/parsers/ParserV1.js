@@ -39,7 +39,7 @@ function extract(elements) {
     };
 }
 
-function inflate(deflatedData, pako) {
+function inflate(deflatedData) {
     return {
         positions: new Uint16Array(pako.inflate(deflatedData.positions).buffer),
         normals: new Int8Array(pako.inflate(deflatedData.normals).buffer),
