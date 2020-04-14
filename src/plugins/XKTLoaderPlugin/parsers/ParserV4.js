@@ -2,6 +2,8 @@
 
 Parser for .XKT Format V4
 
+.XKT specifications: https://github.com/xeokit/xeokit-sdk/wiki/XKT-Format
+
  */
 
 import {utils} from "../../../viewer/scene/utils.js";

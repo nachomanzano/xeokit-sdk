@@ -1,6 +1,8 @@
 /*
 
-Parser for .XKT Format V5
+ Parser for .XKT Format V5
+
+.XKT specifications: https://github.com/xeokit/xeokit-sdk/wiki/XKT-Format
 
  */
 

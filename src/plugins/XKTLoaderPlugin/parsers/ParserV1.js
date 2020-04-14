@@ -1,6 +1,10 @@
 /*
 
-Parser for .XKT Format V1
+ Parser for .XKT Format V1
+
+.XKT specifications: https://github.com/xeokit/xeokit-sdk/wiki/XKT-Format
+
+ DEPRECATED
 
  */
 
