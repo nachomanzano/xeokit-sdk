@@ -2,9 +2,31 @@
 
 Find releases on npm: [@xeokit/xeokit-sdk](https://www.npmjs.com/package/@xeokit/xeokit-sdk)
 
-# 1.3.7
+# 1.3.9
 
 Unreleased
+
+* CameraControl 
+    * Improve CameraControl touch dolly/pan. [#415](https://github.com/xeokit/xeokit-sdk/pull/415) ([**@amoki**](https://github.com/amoki))
+       
+# 1.3.8
+
+August 14, 2020
+
+* BIMServerLoaderPlugin
+    * Support BIMServer 1.5.182. [#287](https://github.com/xeokit/xeokit-sdk/issues/287) ([**@dimone-kun**](https://github.com/dimone-kun))
+* CameraControl 
+    * Picking optimizations and fixes. [#404](https://github.com/xeokit/xeokit-sdk/pull/404) ([**@xeolabs**](https://github.com/xeolabs))
+    * Fix CameraControl dolly/rotate interference. [#349](https://github.com/xeokit/xeokit-sdk/issues/349) ([**@xeolabs**](https://github.com/xeolabs))
+    * Set CameraControl rotationInertia zero by default. [#411](https://github.com/xeokit/xeokit-sdk/issues/411) ([**@xeolabs**](https://github.com/xeolabs))
+    *  Fix CameraControl "picked" event. [#412](https://github.com/xeokit/xeokit-sdk/issues/412) ([**@xeolabs**](https://github.com/xeolabs))
+* Entity
+    * Fix Rendering glitch on Chrome/FF/Android. [#402](https://github.com/xeokit/xeokit-sdk/issues/402) ([**@xeolabs**](https://github.com/xeolabs))       
+    * Fix shading breakage for Phong, metallic and specular materials. [#410](https://github.com/xeokit/xeokit-sdk/issues/410) ([**@xeolabs**](https://github.com/xeolabs))
+       
+# 1.3.7
+
+August 7, 2020
 
 * CameraControl 
     * Customizable CameraControl key mappings. [#395](https://github.com/xeokit/xeokit-sdk/pull/395) ([**@xeolabs**](https://github.com/xeolabs))

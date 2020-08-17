@@ -202,6 +202,7 @@ class MousePickHandler {
                 if (pickedSubs || pickedNothingSubs || pickedSurfaceSubs) {
 
                     pickController.pickCursorPos = states.pointerCanvasPos;
+                    pickController.schedulePickEntity = true;
                     pickController.schedulePickSurface = pickedSurfaceSubs;
                     pickController.update();
 
@@ -228,11 +229,9 @@ class MousePickHandler {
 
             if (this._clicks === 1) { // First click
 
-                const pointerCanvasPos = states.pointerCanvasPos.slice();
-
                 this._timeout = setTimeout(() => {
 
-                    pickController.pickCursorPos = pointerCanvasPos;
+                    pickController.pickCursorPos = states.pointerCanvasPos;
                     pickController.schedulePickEntity = configs.doublePickFlyTo;
                     pickController.schedulePickSurface = pickedSurfaceSubs;
                     pickController.update();

@@ -11,7 +11,6 @@ import {KeyboardPanRotateDollyHandler} from "./lib/handlers/KeyboardPanRotateDol
 import {CameraUpdater} from "./lib/CameraUpdater.js";
 import {MouseMiscHandler} from "./lib/handlers/MouseMiscHandler.js";
 import {TouchPanRotateAndDollyHandler} from "./lib/handlers/TouchPanRotateAndDollyHandler.js";
-import {TouchPickHandler} from "./lib/handlers/TouchPickHandler.js";
 import {utils} from "../utils.js";
 
 /**
@@ -641,7 +640,7 @@ class CameraControl extends Component {
 
             dragRotationRate: 360.0,
             keyboardRotationRate: 90.0,
-            rotationInertia: 0.5,
+            rotationInertia: 0.0,
 
             // Panning
 
@@ -673,7 +672,7 @@ class CameraControl extends Component {
             activeTouches: [],
             tapStartPos: new Float32Array(2),
             tapStartTime: -1,
-            lastTapTime: -1,
+            lastTapTime: -1
         };
 
         // Updates for CameraUpdater to process on next Scene "tick" event
@@ -709,7 +708,6 @@ class CameraControl extends Component {
             new MousePanRotateDollyHandler(this.scene, this._controllers, this._configs, this._states, this._updates),
             new KeyboardAxisViewHandler(this.scene, this._controllers, this._configs, this._states, this._updates),
             new MousePickHandler(this.scene, this._controllers, this._configs, this._states, this._updates),
-            new TouchPickHandler(this.scene, this._controllers, this._configs, this._states, this._updates),
             new KeyboardPanRotateDollyHandler(this.scene, this._controllers, this._configs, this._states, this._updates)
         ];
 
@@ -1224,20 +1222,20 @@ class CameraControl extends Component {
      * without interference from inertia. Zero inertia can also mean that less frames are rendered while
      * you are rotating the Camera.
      *
-     * Default is ````0.5````.
+     * Default is ````0.0````.
      *
      * Does not apply when {@link CameraControl#navMode} is ````"planView"````, which disallows rotation.
      *
      * @param {Number} rotationInertia New inertial factor.
      */
     set rotationInertia(rotationInertia) {
-        this._configs.rotationInertia = (rotationInertia !== undefined && rotationInertia !== null) ? rotationInertia : 0.5;
+        this._configs.rotationInertia = (rotationInertia !== undefined && rotationInertia !== null) ? rotationInertia : 0.0;
     }
 
     /**
      * Gets the rotation inertia factor.
      *
-     * Default is ````0.5````.
+     * Default is ````0.0````.
      *
      * Does not apply when {@link CameraControl#navMode} is ````"planView"````, which disallows rotation.
      *
