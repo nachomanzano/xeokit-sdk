@@ -28,19 +28,19 @@ function extract(elements) {
         instancedPrimitivesDecodeMatrix: elements[5],
 
         eachPrimitivePositionsAndNormalsPortion: elements[6],
-        eachPrimitiveIndicesPortion: elements[6],
-        eachPrimitiveEdgeIndicesPortion: elements[7],
-        eachPrimitiveColorAndOpacity: elements[8],
+        eachPrimitiveIndicesPortion: elements[7],
+        eachPrimitiveEdgeIndicesPortion: elements[8],
+        eachPrimitiveColorAndOpacity: elements[9],
 
-        primitiveInstances: elements[9],
+        primitiveInstances: elements[10],
 
-        eachEntityId: elements[10],
-        eachEntityPrimitiveInstancesPortion: elements[11],
-        eachEntityMatricesPortion: elements[12],
+        eachEntityId: elements[11],
+        eachEntityPrimitiveInstancesPortion: elements[12],
+        eachEntityMatricesPortion: elements[13],
 
-        eachTileAABB: elements[13],
-        eachTileDecodeMatrix: elements[14],
-        eachTileEntitiesPortion: elements[15]
+        eachTileAABB: elements[14],
+        eachTileDecodeMatrix: elements[15],
+        eachTileEntitiesPortion: elements[16]
     };
 }
 
@@ -69,7 +69,7 @@ function inflate(deflatedData) {
 
         eachTileAABB: new Float32Array(pako.inflate(deflatedData.eachTileAABB).buffer),
         eachTileDecodeMatrix: new Float32Array(pako.inflate(deflatedData.eachTileDecodeMatrix).buffer),
-        eachTileEntitiesPortion: new Uint32Array(pako.inflate(deflatedData.eachTileAABB).buffer),
+        eachTileEntitiesPortion: new Uint32Array(pako.inflate(deflatedData.eachTileEntitiesPortion).buffer),
     };
 }
 
@@ -105,7 +105,7 @@ function load(viewer, options, inflatedData, performanceModel) {
     const eachEntityPrimitiveInstancesPortion = inflatedData.eachEntityPrimitiveInstancesPortion;
     const eachEntityMatricesPortion = inflatedData.eachEntityMatricesPortion;
 
-    const eachTileAABB = inflatedData.eachTileABB;
+    const eachTileAABB = inflatedData.eachTileAABB;
     const eachTileDecodeMatrix = inflatedData.eachTileDecodeMatrix;
     const eachTileEntitiesPortion = inflatedData.eachTileEntitiesPortion;
 
@@ -114,36 +114,16 @@ function load(viewer, options, inflatedData, performanceModel) {
     const numEntities = eachEntityId.length;
     const numTiles = eachTileEntitiesPortion.length;
 
+    const geometryCreated = {};
+    let nextMeshId = 0;
+
     // Count instances of each primitive
 
-    const primitiveInstanceCounts = new Uint8Array(numPrimitives);
+    const primitiveInstanceCounts = new Uint32Array(numPrimitives);
 
     for (let primitiveInstanceIndex = 0; primitiveInstanceIndex < numPrimitiveInstances; primitiveInstanceIndex++) {
         const primitiveIndex = primitiveInstances[primitiveInstanceIndex];
         primitiveInstanceCounts[primitiveIndex]++;
-    }
-
-    // Map batched primitives to the entities that will use them
-
-    const batchedPrimitiveEntityIndexes = {};
-
-    for (let entityIndex = 0; entityIndex < numEntities; entityIndex++) {
-
-        const lastEntityIndex = (numEntities - 1);
-        const atLastEntity = (entityIndex === lastEntityIndex);
-        const firstPrimitiveInstanceIndex = eachEntityPrimitiveInstancesPortion [entityIndex];
-        const lastPrimitiveInstanceIndex = atLastEntity ? eachEntityPrimitiveInstancesPortion[lastEntityIndex] : eachEntityPrimitiveInstancesPortion[entityIndex + 1];
-
-        for (let primitiveInstancesIndex = firstPrimitiveInstanceIndex; primitiveInstancesIndex < lastPrimitiveInstanceIndex; primitiveInstancesIndex++) {
-
-            const primitiveIndex = primitiveInstances[primitiveInstancesIndex];
-            const primitiveInstanceCount = primitiveInstanceCounts[primitiveIndex];
-            const isInstancedPrimitive = (primitiveInstanceCount > 1);
-
-            if (!isInstancedPrimitive) {
-                batchedPrimitiveEntityIndexes[primitiveIndex] = entityIndex;
-            }
-        }
     }
 
     // Iterate over tiles
@@ -152,24 +132,37 @@ function load(viewer, options, inflatedData, performanceModel) {
 
         const lastTileIndex = (numTiles - 1);
         const atLastTile = (tileIndex === lastTileIndex);
-        const firstEntityIndex = eachTileEntitiesPortion [tileIndex];
-        const lastEntityIndex = atLastTile ? eachTileEntitiesPortion[lastTileIndex] : eachTileEntitiesPortion[tileIndex + 1];
 
-        const tileDecodeMatrix = eachTileDecodeMatrix.subarray(tileIndex * 16, (tileIndex + 1) * 16);
-        const tileAABB = eachTileAABB.subarray(tileIndex * 6, (tileIndex + 1) * 6);
+        const firstTileEntityIndex = eachTileEntitiesPortion [tileIndex];
+        const lastTileEntityIndex = atLastTile ? numEntities : eachTileEntitiesPortion[tileIndex + 1];
+
+        const tileDecodeMatrix = eachTileDecodeMatrix.subarray(tileIndex * 16, (tileIndex * 16) + 16);
+        const tileAABB = eachTileAABB.subarray(tileIndex * 6, (tileIndex * 6) + 6);
         const tileCenter = math.getAABB3Center(tileAABB); // TODO: Optimize with cached center
 
-        // Iterate over tile's entities
+        // console.log("Tile:");
+        // console.log(tileDecodeMatrix);
+        // console.log(tileAABB);
+        // console.log(tileCenter);
+        // console.log("\n");
 
-        for (let entityIndex = firstEntityIndex; entityIndex < lastEntityIndex; entityIndex++) {
+        // Iterate over each tile's entities
 
-            const lastEntityIndex = (numEntities - 1);
-            const atLastEntity = (entityIndex === lastEntityIndex);
-            const firstPrimitiveInstanceIndex = eachEntityPrimitiveInstancesPortion [entityIndex];
-            const lastPrimitiveInstanceIndex = atLastEntity ? eachEntityPrimitiveInstancesPortion[lastEntityIndex] : eachEntityPrimitiveInstancesPortion[entityIndex + 1];
+        for (let tileEntityIndex = firstTileEntityIndex; tileEntityIndex < lastTileEntityIndex; tileEntityIndex++) {
 
-            // Iterate entity's primitive instances
-            // Create geometries and meshes
+            const entityId = eachEntityId[tileEntityIndex];
+
+            const entityMatrixIndex = eachEntityMatricesPortion[tileEntityIndex];
+            const entityMatrix = matrices.slice(entityMatrixIndex, entityMatrixIndex + 16);
+
+            const lastTileEntityIndex = (numEntities - 1);
+            const atLastTileEntity = (tileEntityIndex === lastTileEntityIndex);
+            const firstPrimitiveInstanceIndex = eachEntityPrimitiveInstancesPortion [tileEntityIndex];
+            const lastPrimitiveInstanceIndex = atLastTileEntity ? primitiveInstances.length : eachEntityPrimitiveInstancesPortion[tileEntityIndex + 1];
+
+            const meshIds = [];
+
+            // Iterate each entity's primitive instances
 
             for (let primitiveInstancesIndex = firstPrimitiveInstanceIndex; primitiveInstancesIndex < lastPrimitiveInstanceIndex; primitiveInstancesIndex++) {
 
@@ -179,37 +172,48 @@ function load(viewer, options, inflatedData, performanceModel) {
 
                 const atLastPrimitive = (primitiveIndex === (numPrimitives - 1));
 
-                const color = decompressColor(eachPrimitiveColorAndOpacity.subarray((primitiveIndex * 4), (primitiveIndex * 4) + 3));
-                const opacity = eachPrimitiveColorAndOpacity[(primitiveIndex * 4) + 3] / 255.0;
-
                 const primitivePositions = positions.subarray(eachPrimitivePositionsAndNormalsPortion [primitiveIndex], atLastPrimitive ? positions.length : eachPrimitivePositionsAndNormalsPortion [primitiveIndex + 1]);
                 const primitiveNormals = normals.subarray(eachPrimitivePositionsAndNormalsPortion [primitiveIndex], atLastPrimitive ? normals.length : eachPrimitivePositionsAndNormalsPortion [primitiveIndex + 1]);
                 const primitiveIndices = indices.subarray(eachPrimitiveIndicesPortion [primitiveIndex], atLastPrimitive ? indices.length : eachPrimitiveIndicesPortion [primitiveIndex + 1]);
                 const primitiveEdgeIndices = edgeIndices.subarray(eachPrimitiveEdgeIndicesPortion [primitiveIndex], atLastPrimitive ? edgeIndices.length : eachPrimitiveEdgeIndicesPortion [primitiveIndex + 1]);
 
+                const color = decompressColor(eachPrimitiveColorAndOpacity.subarray((primitiveIndex * 4), (primitiveIndex * 4) + 3));
+                const opacity = eachPrimitiveColorAndOpacity[(primitiveIndex * 4) + 3] / 255.0;
+
+                const meshId = nextMeshId++;
+
+                const meshDefaults = {}; // TODO: get from lookup from entity IDs
+
                 if (isInstancedPrimitive) {
 
-                    // Primitive instanced by more than one entity, and has positions in Model-space
+                    // Create mesh for multi-use primitive - create (or reuse) geometry, create mesh using that geometry
 
-                    var geometryId = "geometry" + primitiveIndex; // These IDs are local to the PerformanceModel
+                    const geometryId = "geometry" + primitiveIndex; // These IDs are local to the PerformanceModel
 
-                    performanceModel.createGeometry({
-                        id: geometryId,
-                        primitive: "triangles",
-                        positions: primitivePositions,
-                        normals: primitiveNormals,
-                        indices: primitiveIndices,
-                        edgeIndices: primitiveEdgeIndices,
-                        positionsDecodeMatrix: instancedPrimitivesDecodeMatrix
-                    });
+                    if (!geometryCreated[geometryId]) {
+
+                        performanceModel.createGeometry({
+                            id: geometryId,
+                            primitive: "triangles",
+                            positions: primitivePositions,
+                            normals: primitiveNormals,
+                            indices: primitiveIndices,
+                            edgeIndices: primitiveEdgeIndices,
+                            positionsDecodeMatrix: instancedPrimitivesDecodeMatrix
+                        });
+
+                        geometryCreated[geometryId] = true;
+                    }
+
+                    performanceModel.createMesh(utils.apply(meshDefaults, {
+                        id: meshId,
+                        geometryId: geometryId,
+                        matrix: entityMatrix
+                    }));
 
                 } else {
 
-                    // Primitive is used only by one entity, and has positions pre-transformed into World-space
-
-                    const meshId = primitiveIndex; // These IDs are local to the PerformanceModel
-
-                    const meshDefaults = {}; // TODO: get from lookup from entity IDs
+                    // Create mesh for single-use primitive
 
                     performanceModel.createMesh(utils.apply(meshDefaults, {
                         id: meshId,
@@ -223,42 +227,8 @@ function load(viewer, options, inflatedData, performanceModel) {
                         opacity: opacity
                     }));
                 }
-            }
 
-            // Iterate entity's primitive instances again
-            // Create meshes and entities
-
-            let countInstances = 0;
-            const entityId = eachEntityId[entityIndex];
-
-            const meshIds = [];
-
-            for (let primitiveInstancesIndex = firstPrimitiveInstanceIndex; primitiveInstancesIndex < lastPrimitiveInstanceIndex; primitiveInstancesIndex++) {
-
-                const primitiveIndex = primitiveInstances[primitiveInstancesIndex];
-                const primitiveInstanceCount = primitiveInstanceCounts[primitiveIndex];
-                const isInstancedPrimitive = (primitiveInstanceCount > 1);
-
-                if (isInstancedPrimitive) {
-
-                    const meshDefaults = {}; // TODO: get from lookup from entity IDs
-
-                    const meshId = "instance." + countInstances++;
-                    const geometryId = "geometry" + primitiveIndex;
-                    const matricesIndex = (eachEntityMatricesPortion [entityIndex]) * 16;
-                    const matrix = matrices.subarray(matricesIndex, matricesIndex + 16);
-
-                    performanceModel.createMesh(utils.apply(meshDefaults, {
-                        id: meshId,
-                        geometryId: geometryId,
-                        matrix: matrix
-                    }));
-
-                    meshIds.push(meshId);
-
-                } else {
-                    meshIds.push(primitiveIndex);
-                }
+                meshIds.push(meshId);
             }
 
             if (meshIds.length > 0) {
@@ -267,7 +237,7 @@ function load(viewer, options, inflatedData, performanceModel) {
 
                 performanceModel.createEntity(utils.apply(entityDefaults, {
                     id: entityId,
-                    isObject: true, ///////////////// TODO: If metaobject exists
+                    isObject: true, // TODO: If metaobject exists
                     meshIds: meshIds
                 }));
             }
