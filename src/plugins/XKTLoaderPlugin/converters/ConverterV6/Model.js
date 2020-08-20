@@ -42,7 +42,7 @@ class Model {
          *
          * @type {Float32Array}
          */
-        this.instancedPrimitivesDecodeMatrix = math.mat4();
+        this.reusedPrimitivesDecodeMatrix = math.mat4();
 
         /**
          * Primitives within this model, each mapped to {@link Primitive#primitiveId}.
@@ -82,7 +82,7 @@ class Model {
         /**
          * Tiles within this Model.
          *
-         * Created by {@link createTiles}.
+         * Created by {@link finalize}.
          */
         this.tilesList = [];
     }
@@ -96,6 +96,7 @@ class Model {
      * primitive, ````createPrimitive()```` will immediately transform its positions by the modeling matrix.
      *
      * @param {Number|String} primitiveId Unique ID for the primitive.
+     * @param {String} primitiveType The type of primitive: "triangles", "lines" or "points"
      * @param {Boolean} reused True if the primitive is used by multiple Entities.
      * @param {Number[]} modelingMatrix If ````reused```` is ````false````, then ````createPrimitive()```` will transform the
      * primitive's positions by this modeling matrix. This argument is ignored when the primitive is used by multiple entities.
@@ -106,7 +107,7 @@ class Model {
      * @param {Number[]}indices Triangle mesh indices for the primitive.
      * @returns {Primitive} The new Primitive.
      */
-    createPrimitive(primitiveId, reused, modelingMatrix, color, opacity, positions, normals, indices) {
+    createPrimitive(primitiveId, primitiveType, reused, modelingMatrix, color, opacity, positions, normals, indices) {
 
         const edgeIndices = buildEdgeIndices(positions, indices, null, 10);
 
@@ -137,7 +138,7 @@ class Model {
 
         const primitiveIndex = this.primitivesList.length;
 
-        const primitive = new Primitive(primitiveId, primitiveIndex, color, opacity, reused, positions, normalsOctEncoded, indices, edgeIndices);
+        const primitive = new Primitive(primitiveId, primitiveType, primitiveIndex, color, opacity, reused, positions, normalsOctEncoded, indices, edgeIndices);
 
         this.primitives[primitiveId] = primitive;
         this.primitivesList.push(primitive);
@@ -234,11 +235,13 @@ class Model {
      *
      * Called by {@link glTFToModel}.
      */
-    createTiles() {
+    finalize() {
 
         const rootKDNode = this._createKDTree();
 
         this._createTilesFromKDTree(rootKDNode);
+
+        this._createInstancedPrimitivesDecodeMatrix();
     }
 
     _createKDTree() {
@@ -363,7 +366,7 @@ class Model {
         // FIXME: aabb is broken
         //-----------------------------------------------------------
 
-        aabb = [-1000,-1000,-1000,1000,1000,1000];
+        aabb = [-1000, -1000, -1000, 1000, 1000, 1000];
 
         // Make the positions of all primitives belonging solely to the entities within this tile relative to the tile's center
 
@@ -417,6 +420,41 @@ class Model {
         const tile = new Tile(aabb, decodeMatrix, entities);
 
         this.tilesList.push(tile);
+    }
+
+    _createInstancedPrimitivesDecodeMatrix() {
+
+        const tempVec3a = math.vec3();
+        const instancedPrimitivesAABB = math.AABB3();
+        let countInstancedPrimitives = 0;
+
+        for (let primitiveIndex = 0, numPrimitives = this.primitivesList.length; primitiveIndex < numPrimitives; primitiveIndex++) {
+
+            const primitive = this.primitivesList [primitiveIndex];
+
+            if (primitive.reused) {
+
+                const positions = primitive.positions;
+
+                for (let i = 0, len = positions.length; i < len; i += 3) {
+
+                    tempVec3a[0] = positions[i];
+                    tempVec3a[1] = positions[i + 1];
+                    tempVec3a[2] = positions[i + 2];
+
+                    math.expandAABB3Point3(instancedPrimitivesAABB, tempVec3a);
+                }
+
+                countInstancedPrimitives++;
+            }
+        }
+
+        if (countInstancedPrimitives > 0) {
+            geometryCompression.createPositionsDecodeMatrix(instancedPrimitivesAABB, this.reusedPrimitivesDecodeMatrix);
+        } else {
+            math.identityMat4(this.reusedPrimitivesDecodeMatrix); // No need for this matrix - be tidy and set it to identity
+        }
+
     }
 }
 

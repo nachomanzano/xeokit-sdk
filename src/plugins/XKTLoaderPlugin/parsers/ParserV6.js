@@ -16,6 +16,7 @@ if (!pako.inflate) {  // See https://github.com/nodeca/pako/issues/97
 }
 
 function extract(elements) {
+
     return {
 
         positions: elements[0],
@@ -25,7 +26,7 @@ function extract(elements) {
 
         matrices: elements[4],
 
-        instancedPrimitivesDecodeMatrix: elements[5],
+        reusedPrimitivesDecodeMatrix: elements[5],
 
         eachPrimitivePositionsAndNormalsPortion: elements[6],
         eachPrimitiveIndicesPortion: elements[7],
@@ -45,6 +46,7 @@ function extract(elements) {
 }
 
 function inflate(deflatedData) {
+
     return {
 
         positions: new Uint16Array(pako.inflate(deflatedData.positions).buffer),
@@ -54,7 +56,7 @@ function inflate(deflatedData) {
 
         matrices: new Float32Array(pako.inflate(deflatedData.matrices).buffer),
 
-        instancedPrimitivesDecodeMatrix: new Float32Array(pako.inflate(deflatedData.instancedPrimitivesDecodeMatrix).buffer),
+        reusedPrimitivesDecodeMatrix: new Float32Array(pako.inflate(deflatedData.reusedPrimitivesDecodeMatrix).buffer),
 
         eachPrimitivePositionsAndNormalsPortion: new Uint32Array(pako.inflate(deflatedData.eachPrimitivePositionsAndNormalsPortion).buffer),
         eachPrimitiveIndicesPortion: new Uint32Array(pako.inflate(deflatedData.eachPrimitiveIndicesPortion).buffer),
@@ -92,7 +94,7 @@ function load(viewer, options, inflatedData, performanceModel) {
 
     const matrices = inflatedData.matrices;
 
-    const instancedPrimitivesDecodeMatrix = inflatedData.instancedPrimitivesDecodeMatrix;
+    const reusedPrimitivesDecodeMatrix = inflatedData.reusedPrimitivesDecodeMatrix;
 
     const eachPrimitivePositionsAndNormalsPortion = inflatedData.eachPrimitivePositionsAndNormalsPortion;
     const eachPrimitiveIndicesPortion = inflatedData.eachPrimitiveIndicesPortion;
@@ -199,7 +201,7 @@ function load(viewer, options, inflatedData, performanceModel) {
                             normals: primitiveNormals,
                             indices: primitiveIndices,
                             edgeIndices: primitiveEdgeIndices,
-                            positionsDecodeMatrix: instancedPrimitivesDecodeMatrix
+                            positionsDecodeMatrix: reusedPrimitivesDecodeMatrix
                         });
 
                         geometryCreated[geometryId] = true;
@@ -208,7 +210,9 @@ function load(viewer, options, inflatedData, performanceModel) {
                     performanceModel.createMesh(utils.apply(meshDefaults, {
                         id: meshId,
                         geometryId: geometryId,
-                        matrix: entityMatrix
+                        matrix: entityMatrix,
+                        color: color,
+                        opacity: opacity
                     }));
 
                 } else {

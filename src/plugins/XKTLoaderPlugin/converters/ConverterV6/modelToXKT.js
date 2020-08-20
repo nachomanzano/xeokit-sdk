@@ -2,8 +2,6 @@
 
 
 import * as p from "../../lib/pako.js";
-import {math} from "../lib/math.js";
-import {geometryCompression} from "../lib/geometryCompression.js";
 
 let pako = window.pako || p;
 if (!pako.inflate) {  // See https://github.com/nodeca/pako/issues/97
@@ -30,7 +28,6 @@ function getModelData(model) {
 
     const primitivesList = model.primitivesList;
     const primitiveInstancesList = model.primitiveInstancesList;
-    const entities = model.entities;
     const entitiesList = model.entitiesList;
     const tilesList = model.tilesList;
 
@@ -68,16 +65,16 @@ function getModelData(model) {
 
     const data = {
 
-        positionsQuantized: new Uint16Array(lenPositions), // All geometry arrays
-        normalsOctEncoded: new Int8Array(lenNormals),
+        positions: new Uint16Array(lenPositions), // All geometry arrays
+        normals: new Int8Array(lenNormals),
         indices: new Uint32Array(lenIndices),
         edgeIndices: new Uint32Array(lenEdgeIndices),
 
         matrices: new Float32Array(numEntityMatrices * 16), // Modeling matrices for all reused primitives
 
-        instancedPrimitivesDecodeMatrix: new Float32Array(16), // A single, global position-dequantization matrix for all reused primitives
+        reusedPrimitivesDecodeMatrix: new Float32Array(model.reusedPrimitivesDecodeMatrix), // A single, global position-dequantization matrix for all reused primitives
 
-        eachPrimitivePositionsAndNormalsPortion: new Uint32Array(numPrimitives), // For each primitive, an index to its first element in data.positionsQuantized and data.normalsOctEncoded
+        eachPrimitivePositionsAndNormalsPortion: new Uint32Array(numPrimitives), // For each primitive, an index to its first element in data.positions and data.normals
         eachPrimitiveIndicesPortion: new Uint32Array(numPrimitives), // For each primitive, an index to its first element in data.indices
         eachPrimitiveEdgeIndicesPortion: new Uint32Array(numPrimitives), // For each primitive, an index to its first element in data.edgeIndices
         eachPrimitiveColorAndOpacity: new Uint8Array(lenColors), // For each primitive, an RGBA integer color [0..255, 0..255, 0..255, 0..255]
@@ -103,18 +100,13 @@ function getModelData(model) {
     let countIndices = 0;
     let countEdgeIndices = 0;
     let countColors = 0;
-    let countInstancedPrimitives = 0;
-
-    const instancedPrimitivesAABB = math.AABB3();
-    math.collapseAABB3(instancedPrimitivesAABB);
-    const tempVec3a = math.vec3();
 
     for (let primitiveIndex = 0; primitiveIndex < numPrimitives; primitiveIndex++) {
 
         const primitive = primitivesList [primitiveIndex];
 
-        data.positionsQuantized.set(primitive.positionsQuantized, countPositions);
-        data.normalsOctEncoded.set(primitive.normalsOctEncoded, countNormals);
+        data.positions.set(primitive.positionsQuantized, countPositions);
+        data.normals.set(primitive.normalsOctEncoded, countNormals);
         data.indices.set(primitive.indices, countIndices);
         data.edgeIndices.set(primitive.edgeIndices, countEdgeIndices);
 
@@ -131,28 +123,6 @@ function getModelData(model) {
         countIndices += primitive.indices.length;
         countEdgeIndices += primitive.edgeIndices.length;
         countColors += 4;
-
-        if (primitive.reused) {
-
-            const positions = primitive.positions;
-
-            for (let i = 0, len = positions.length; i < len; i += 3) {
-
-                tempVec3a[0] = positions[i];
-                tempVec3a[1] = positions[i + 1];
-                tempVec3a[2] = positions[i + 2];
-
-                math.expandAABB3Point3(instancedPrimitivesAABB, tempVec3a);
-            }
-
-            countInstancedPrimitives++;
-        }
-    }
-
-    if (countInstancedPrimitives > 0) {
-        geometryCompression.createPositionsDecodeMatrix(instancedPrimitivesAABB, data.instancedPrimitivesDecodeMatrix);
-    } else {
-        math.identityMat4(data.instancedPrimitivesDecodeMatrix); // No need for this matrix - be tidy and set it to identity
     }
 
     for (let primitiveInstanceIndex = 0; primitiveInstanceIndex < numPrimitiveInstances; primitiveInstanceIndex++) {
@@ -208,14 +178,15 @@ function getModelData(model) {
 
 function deflateData(data) {
     return {
-        positionsQuantized: pako.deflate(data.positionsQuantized.buffer),
-        normalsOctEncoded: pako.deflate(data.normalsOctEncoded.buffer),
+
+        positions: pako.deflate(data.positions.buffer),
+        normals: pako.deflate(data.normals.buffer),
         indices: pako.deflate(data.indices.buffer),
         edgeIndices: pako.deflate(data.edgeIndices.buffer),
 
         matrices: pako.deflate(data.matrices.buffer),
 
-        instancedPrimitivesDecodeMatrix: pako.deflate(data.instancedPrimitivesDecodeMatrix.buffer),
+        reusedPrimitivesDecodeMatrix: pako.deflate(data.reusedPrimitivesDecodeMatrix.buffer),
 
         eachPrimitivePositionsAndNormalsPortion: pako.deflate(data.eachPrimitivePositionsAndNormalsPortion.buffer),
         eachPrimitiveIndicesPortion: pako.deflate(data.eachPrimitiveIndicesPortion.buffer),
@@ -239,20 +210,27 @@ function deflateData(data) {
 
 function createArrayBuffer(deflatedData) {
     return toArrayBuffer([
-        deflatedData.positionsQuantized,
-        deflatedData.normalsOctEncoded,
+
+        deflatedData.positions,
+        deflatedData.normals,
         deflatedData.indices,
         deflatedData.edgeIndices,
+
         deflatedData.matrices,
-        deflatedData.instancedPrimitivesDecodeMatrix,
+
+        deflatedData.reusedPrimitivesDecodeMatrix,
+
         deflatedData.eachPrimitivePositionsAndNormalsPortion,
         deflatedData.eachPrimitiveIndicesPortion,
         deflatedData.eachPrimitiveEdgeIndicesPortion,
         deflatedData.eachPrimitiveColorAndOpacity,
+
         deflatedData.primitiveInstances,
+
         deflatedData.eachEntityId,
         deflatedData.eachEntityPrimitiveInstancesPortion,
         deflatedData.eachEntityMatricesPortion,
+
         deflatedData.eachTileAABB,
         deflatedData.eachTileDecodeMatrix,
         deflatedData.eachTileEntitiesPortion

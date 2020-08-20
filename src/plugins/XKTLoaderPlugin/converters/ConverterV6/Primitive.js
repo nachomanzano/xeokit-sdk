@@ -8,6 +8,7 @@ class Primitive {
     /**
      *
      * @param primitiveId
+     * @param primitiveType
      * @param primitiveIndex
      * @param color
      * @param opacity
@@ -17,7 +18,7 @@ class Primitive {
      * @param indices
      * @param edgeIndices
      */
-    constructor(primitiveId, primitiveIndex, color, opacity, reused, positions, normalsOctEncoded, indices, edgeIndices) {
+    constructor(primitiveId, primitiveType, primitiveIndex, color, opacity, reused, positions, normalsOctEncoded, indices, edgeIndices) {
 
         /**
          * Unique ID of this Primitive.
@@ -25,6 +26,12 @@ class Primitive {
          * Find the Primitive by this ID in {@link Model#primitives}.
          */
         this.primitiveId = primitiveId;
+
+        /**
+         * The type of primitive - "triangles" | "points" | "lines".
+         * @type {String}
+         */
+        this.primitiveType = primitiveType;
 
         /**
          * Index of this Primitive in {@link Model#primitivesList};
@@ -59,7 +66,7 @@ class Primitive {
         /**
          * Quantized vertex positions.
          *
-         * This property is initially ````null````, then is later created by {@link Model#createTiles}.
+         * This property is initially ````null````, then is later created by {@link Model#finalize}.
          *
          * If the Primitive is used by multiple {@link Entity}s, then the positions are in Object-space. If the Primitive is
          * used by only one Entity, then the positions are in World-space.

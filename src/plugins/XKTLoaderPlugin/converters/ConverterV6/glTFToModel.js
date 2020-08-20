@@ -60,7 +60,7 @@ function glTFToModel(gltf, options = {}) {
             parseMaterials(parsingCtx);
             parseDefaultScene(parsingCtx);
 
-            model.createTiles();
+            model.finalize();
 
             resolve(model);
         });
@@ -397,6 +397,7 @@ function parseNode(parsingCtx, glTFNode, matrix) {
 
                         model.createPrimitive(
                             primitiveId,
+                            "triangles",
                             meshInstanced,
                             primitiveModelingMatrix,
                             color,
