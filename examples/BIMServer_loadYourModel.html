@@ -871,10 +871,10 @@
         const passwordElement = document.getElementById("password");
         const poidElement = document.getElementById("poid");
 
-        const bimServerAddress = bimServerAddressElement.innerText || "http://localhost:8080";
-        const username = usernameElement.innerText || "jmanzano@evoltia.com";
-        const password = passwordElement.innerText || "test";
-        const poid = parseInt(poidElement.innerText || 262145);
+        const bimServerAddress = bimServerAddressElement.value || "http://localhost:8080";
+        const username = usernameElement.value || "jmanzano@evoltia.com";
+        const password = passwordElement.value || "test";
+        const poid = parseInt(poidElement.value || 262145);
 
         //------------------------------------------------------------------------------------------------------------------
         // Create a BIMServerClient
